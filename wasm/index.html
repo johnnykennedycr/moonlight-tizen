@@ -24,10 +24,28 @@
         <!-- Header logo and title -->
         <img src="static/res/ic_moonlight_logo.svg" id="header-logo">
         <span id="header-title" class="mdl-layout-title" data-i18n="Moonlight">Moonlight</span>
+        <!-- Plex Filter Pills in Header -->
+        <div id="plexFilterBar" class="plex-filter-bar" style="display: none;">
+          <button type="button" id="filterAllBtn" class="plex-filter-pill active" tabindex="0">Todos</button>
+          <button type="button" id="filterRecentBtn" class="plex-filter-pill" tabindex="0">Recentes</button>
+          <button type="button" id="filterFavBtn" class="plex-filter-pill" tabindex="0">Favoritos</button>
+        </div>
         <!-- Add spacer to align navigation to the right -->
         <div class="mdl-layout-spacer"></div>
         <!-- Navigation bar -->
         <nav class="mdl-navigation">
+          <button type="button" id="scanGamesBtn" class="mdl-button mdl-js-button mdl-button--icon mdl-js-ripple-effect plex-nav-btn" aria-label="Scan PC Games" style="display: none;">
+            <i class="navigation-button-icons material-icons">sync</i>
+          </button>
+          <div id="scanGamesTooltip" class="mdl-tooltip" for="scanGamesBtn">Escanear Jogos do PC</div>
+          <button type="button" id="manageFoldersBtn" class="mdl-button mdl-js-button mdl-button--icon mdl-js-ripple-effect plex-nav-btn" aria-label="PC Game Folders" style="display: none;">
+            <i class="navigation-button-icons material-icons">create_new_folder</i>
+          </button>
+          <div id="manageFoldersTooltip" class="mdl-tooltip" for="manageFoldersBtn">Pastas do PC</div>
+          <button type="button" id="pcPowerBtn" class="mdl-button mdl-js-button mdl-button--icon mdl-js-ripple-effect plex-nav-btn" aria-label="PC Power Menu" style="display: none;">
+            <i class="navigation-button-icons material-icons">power_settings_new</i>
+          </button>
+          <div id="pcPowerTooltip" class="mdl-tooltip" for="pcPowerBtn">Controle / Energia do PC</div>
           <button type="button" id="settingsBtn" class="mdl-button mdl-js-button mdl-button--icon mdl-js-ripple-effect" role="link" aria-label="Settings">
             <i class="navigation-button-icons material-icons">settings</i>
           </button>
@@ -530,6 +548,24 @@
           </div>
         </div>
       </div>
+      <div id="plex-hero-banner" style="display: none;">
+        <div id="plex-hero-bg"></div>
+        <div id="plex-hero-overlay"></div>
+        <div id="plex-hero-content">
+          <div id="plex-hero-badge-row">
+            <span id="plex-hero-badge" class="plex-badge">BIBLIOTECA DO PC</span>
+            <span id="plex-hero-host-tag" class="plex-host-tag">PC Online</span>
+          </div>
+          <h1 id="plex-hero-title">Selecione um jogo</h1>
+          <div id="plex-hero-meta">Carregando biblioteca...</div>
+          <p id="plex-hero-desc">Navegue pelos jogos mapeados automaticamente do seu PC e inicie direto pela TV.</p>
+          <div id="plex-hero-hints">
+            <span class="plex-hint-item"><b>OK / A</b> Jogar Agora</span>
+            <span class="plex-hint-item"><b>Verde / Y</b> Favoritar</span>
+            <span class="plex-hint-item"><b>Cima</b> Filtros, Pastas do PC e Energia</span>
+          </div>
+        </div>
+      </div>
       <div id="game-grid"></div>
       <div id="listener"></div>
       <!-- Wasm module placeholder, Wasm gets thrown into here -->
@@ -817,6 +853,48 @@
       <div class="mdl-dialog__actions">
         <button type="button" id="cancelExitApp" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored mdl-js-ripple-effect" data-i18n="Cancel">Cancel</button>
         <button type="button" id="continueExitApp" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored mdl-js-ripple-effect" data-i18n="Exit">Exit</button>
+      </div>
+    </dialog>
+  </div>
+  <!-- Plex TV Folder Browser Dialog -->
+  <div id="folderBrowserDialogOverlay" class="dialog-overlay">
+    <dialog id="folderBrowserDialog" class="mdl-dialog large-dialog plex-dialog">
+      <h3 class="mdl-dialog__title">Pastas de Jogos do PC (Modo Plex)</h3>
+      <div class="mdl-dialog__content">
+        <div class="plex-folder-section">
+          <div class="plex-folder-label">Pastas monitoradas atualmente no PC:</div>
+          <div id="watchedFoldersList" class="plex-watched-chips"></div>
+        </div>
+        <div class="plex-folder-section">
+          <div class="plex-folder-label">Navegar nos discos do PC: <span id="folderBrowserCurrentPath" class="plex-path-badge">Discos do PC</span></div>
+          <div id="folderBrowserList" class="plex-folder-list"></div>
+        </div>
+      </div>
+      <div class="mdl-dialog__actions plex-dialog-actions">
+        <button type="button" id="folderUpBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">⬆ Pasta Acima</button>
+        <button type="button" id="toggleWatchFolderBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">➕ Monitorar Pasta Atual</button>
+        <button type="button" id="scanNowFolderBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">🔄 Escanear Agora</button>
+        <button type="button" id="closeFolderBrowserBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">Fechar</button>
+      </div>
+    </dialog>
+  </div>
+  <!-- Plex PC Power & Control Dialog -->
+  <div id="pcPowerDialogOverlay" class="dialog-overlay">
+    <dialog id="pcPowerDialog" class="mdl-dialog plex-dialog">
+      <h3 class="mdl-dialog__title">Controle Remoto do PC</h3>
+      <div class="mdl-dialog__content">
+        <p id="pcPowerDialogText">Gerencie o PC diretamente pela TV sem precisar usar mouse ou teclado:</p>
+        <div class="plex-power-buttons">
+          <button type="button" id="powerForceQuitBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored host-menu-button">⏹ Forçar Fechamento de Jogo (Taskkill)</button>
+          <button type="button" id="powerRescanGamesBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored host-menu-button">🔄 Re-escanear Jogos e Capas do PC</button>
+          <button type="button" id="powerRestartSunshineBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored host-menu-button">⚡ Reiniciar Sunshine no PC</button>
+          <button type="button" id="powerSleepPcBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored host-menu-button">🌙 Suspender PC (Standby)</button>
+          <button type="button" id="powerRestartPcBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored host-menu-button">🔁 Reiniciar PC</button>
+          <button type="button" id="powerShutdownPcBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored host-menu-button">⏻ Desligar PC</button>
+        </div>
+      </div>
+      <div class="mdl-dialog__actions">
+        <button type="button" id="closePcPowerBtn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">Fechar</button>
       </div>
     </dialog>
   </div>

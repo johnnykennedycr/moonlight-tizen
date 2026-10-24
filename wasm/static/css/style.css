@@ -1114,3 +1114,256 @@ body {
         transform: translateX(-100%);
     }
 }
+
+/* =============================
+   Moon-Sun Plex Mode Styles
+============================= */
+.plex-nav-btn {
+    background-color: #404354;
+    width: 50px;
+    height: 50px;
+    margin: 0 8px;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.plex-nav-btn.hovered, .plex-nav-btn:hover, .plex-nav-btn:focus {
+    background-color: #404354;
+    box-shadow: 0 0 2px 3px rgba(229, 160, 13, 1);
+}
+.plex-filter-bar {
+    display: flex;
+    align-items: center;
+    margin-left: 35px;
+    gap: 12px;
+}
+.plex-filter-pill {
+    background: rgba(64, 67, 84, 0.85);
+    color: #cfcfcf;
+    border: 2px solid transparent;
+    border-radius: 24px;
+    padding: 8px 22px;
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+}
+.plex-filter-pill.active {
+    background: rgba(229, 160, 13, 0.22);
+    color: #e5a00d;
+    border-color: rgba(229, 160, 13, 0.7);
+}
+.plex-filter-pill.hovered, .plex-filter-pill:hover, .plex-filter-pill:focus {
+    background: #e5a00d;
+    color: #141720;
+    box-shadow: 0 0 10px rgba(229, 160, 13, 0.9);
+    outline: none;
+}
+
+#plex-hero-banner {
+    position: relative;
+    width: calc(100% - 160px);
+    height: 250px;
+    margin: 22px 80px 5px 80px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #1b202e 0%, #252b3d 100%);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+#plex-hero-bg {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 65%;
+    height: 100%;
+    background-size: cover;
+    background-position: center top;
+    opacity: 0.45;
+    transition: background-image 0.35s ease, opacity 0.35s ease;
+}
+#plex-hero-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, #161924 0%, #161924 38%, rgba(22, 25, 36, 0.78) 68%, rgba(22, 25, 36, 0.25) 100%);
+}
+#plex-hero-content {
+    position: relative;
+    z-index: 2;
+    padding: 26px 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    box-sizing: border-box;
+    max-width: 72%;
+}
+#plex-hero-badge-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.plex-badge {
+    background: #e5a00d;
+    color: #12151e;
+    font-size: 1.05rem;
+    font-weight: 800;
+    padding: 4px 12px;
+    border-radius: 6px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+.plex-badge.running {
+    background: #8BC34A;
+    color: #101808;
+}
+.plex-host-tag {
+    background: rgba(0, 163, 198, 0.2);
+    color: #4dd0e1;
+    border: 1px solid rgba(0, 163, 198, 0.5);
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 6px;
+}
+#plex-hero-title {
+    margin: 0 0 6px 0;
+    font-size: 2.7rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+#plex-hero-meta {
+    color: #e5a00d;
+    font-size: 1.3rem;
+    font-weight: 500;
+    margin-bottom: 8px;
+}
+#plex-hero-desc {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1.25rem;
+    margin: 0 0 12px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#plex-hero-hints {
+    display: flex;
+    gap: 24px;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 1.15rem;
+}
+.plex-hint-item b {
+    color: #00A3C6;
+    background: rgba(0, 163, 198, 0.15);
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-right: 4px;
+}
+.game-fav-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(20, 23, 32, 0.85);
+    color: #e5a00d;
+    font-size: 1.3rem;
+    padding: 2px 8px;
+    border-radius: 6px;
+    z-index: 4;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+
+/* Plex Folder Browser & Power Dialogs */
+.plex-dialog {
+    background-color: #242938;
+    border: 1px solid rgba(229, 160, 13, 0.4);
+}
+#folderBrowserDialog {
+    width: 72%;
+    max-width: 1200px;
+}
+.plex-folder-section {
+    margin-bottom: 16px;
+}
+.plex-folder-label {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #e5a00d;
+    margin-bottom: 8px;
+}
+.plex-path-badge {
+    background: #161924;
+    color: #00A3C6;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-family: monospace;
+}
+.plex-watched-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: 36px;
+}
+.plex-watched-chip {
+    background: rgba(139, 195, 74, 0.18);
+    border: 1px solid #8BC34A;
+    color: #dcedc8;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 1.25rem;
+}
+.plex-folder-list {
+    max-height: 320px;
+    overflow-y: auto;
+    background: #181c26;
+    border-radius: 10px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.plex-folder-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    text-align: left;
+    background: #282e3f;
+    color: #fff;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 8px;
+    font-size: 1.35rem;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.plex-folder-item.hovered, .plex-folder-item:hover, .plex-folder-item:focus {
+    background: #353d54;
+    border-color: #00A3C6;
+    box-shadow: 0 0 8px rgba(0, 163, 198, 0.8);
+    outline: none;
+}
+.plex-folder-item.watched-dir {
+    border-left: 6px solid #8BC34A;
+}
+.plex-dialog-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+}
+.plex-dialog-actions button {
+    width: 24% !important;
+    height: 46px !important;
+    font-size: 1.25rem !important;
+}
+.plex-dialog-actions button.hovered, .plex-dialog-actions button:hover, .plex-dialog-actions button:focus,
+#pcPowerDialog button.hovered, #pcPowerDialog button:hover, #pcPowerDialog button:focus {
+    background-color: #e5a00d !important;
+    color: #141720 !important;
+    box-shadow: 0 0 10px rgba(229, 160, 13, 1) !important;
+}

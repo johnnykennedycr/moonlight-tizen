@@ -96,9 +96,26 @@ function attachListeners() {
   $('#addHostContainer').on('click', addHostDialog);
   $('#settingsBtn').on('click', showSettings);
   $('#supportBtn').on('click', appSupportDialog);
-  $('#goBackBtn').on('click', showHosts);
+  $('#goBackBtn').on('click', function() {
+    if ($('#settings-list').is(':visible') && api && api.paired) {
+      Navigation.push(Views.Apps);
+      showApps(api).then(() => {
+        Navigation.switch();
+        Navigation.change(Views.Apps);
+      });
+    } else {
+      window._manualHostsView = true;
+      showHosts();
+    }
+  });
   $('#restoreDefaultsBtn').on('click', restoreDefaultsDialog);
   $('#quitRunningAppBtn').on('click', quitAppDialog);
+  $('#filterAllBtn').on('click', function() { setPlexFilter('ALL'); });
+  $('#filterRecentBtn').on('click', function() { setPlexFilter('RECENT'); });
+  $('#filterFavBtn').on('click', function() { setPlexFilter('FAV'); });
+  $('#scanGamesBtn').on('click', triggerRemoteGameScan);
+  $('#manageFoldersBtn').on('click', openFolderBrowserDialog);
+  $('#pcPowerBtn').on('click', openPcPowerDialog);
   $('.videoResolutionMenu li:not(.unsupported-resolution)').on('click', saveResolution);
   $('.videoFramerateMenu li').on('click', saveFramerate);
   $('#bitrateSlider').on('input', saveBitrate);
@@ -163,6 +180,7 @@ function attachListeners() {
         const buttonMapping = {
           0: () => delayedNavigation(() => Navigation.accept()),
           1: () => delayedNavigation(() => Navigation.back()),
+          3: () => delayedNavigation(() => Navigation.press()),
           8: () => delayedNavigation(() => Navigation.move()),
         };
         // Handle D-Pad mapping
@@ -445,6 +463,9 @@ function showHostsMode() {
   $('#main-content').children().not('#listener, #loadingSpinner, #wasmSpinner').show();
   $('#settings-list').hide();
   $('#game-grid').hide();
+  $('#plex-hero-banner').hide();
+  $('#plexFilterBar').hide();
+  $('#scanGamesBtn, #manageFoldersBtn, #pcPowerBtn').hide();
   $('#goBackBtn').hide();
   $('#restoreDefaultsBtn').hide();
   $('#quitRunningAppBtn').hide();
@@ -1002,11 +1023,16 @@ function pairingDialog(nvhttpHost, onSuccess, onFailure) {
 
     // Change the dialog text element to include the random PIN number
     $('#pairingDialogText').html(
+      '<strong>Modo Plex (Auto-Pareamento Ativo):</strong> Pareando automaticamente com o seu PC...<br><br>' +
       t('Please enter the following PIN on the target PC: %1$s<br><br>', randomNumber) + 
       t('If your host PC is running Sunshine (all GPUs), navigate to the Sunshine Web UI to enter the PIN.<br><br>') + 
-      t('Alternatively, if your host PC has NVIDIA GameStream (NVIDIA-only), navigate to the GeForce Experience to enter the PIN.<br><br>') + 
       t('This dialog will close once the pairing is complete.')
     );
+
+    // Trigger automatic PIN submission on the PC via Moon-Sun Companion Server
+    if (typeof triggerCompanionAutoPair === 'function') {
+      triggerCompanionAutoPair(nvhttpHost, randomNumber);
+    }
 
     // Show the dialog and push the view
     pairingOverlay.style.display = 'flex';
@@ -1692,6 +1718,9 @@ function showSettingsMode() {
   $('#main-content').children().not('#listener, #loadingSpinner, #wasmSpinner').show();
   $('#host-grid').hide();
   $('#game-grid').hide();
+  $('#plex-hero-banner').hide();
+  $('#plexFilterBar').hide();
+  $('#scanGamesBtn, #manageFoldersBtn, #pcPowerBtn').hide();
   $('.nav-menu-parent').hide();
   $('#updateAppBtn').hide();
   $('#settingsBtn').hide();
@@ -2415,17 +2444,22 @@ function sortTitles(list, sortOrder) {
 // Handle layout elements when displaying the Apps view
 function showAppsMode() {
   console.log('%c[index.js, showAppsMode]', 'color: green;', 'Entering "Show Apps" mode.');
-  $('#header-title').html(t('Apps'));
+  $('#header-title').html(api && api.hostname ? escapeHTML(api.hostname) : t('Apps'));
   $('#header-logo').show();
   $('#main-header').show();
   $('#goBackBtn').show();
   $('#quitRunningAppBtn').show();
+  $('#plexFilterBar').css('display', 'flex');
+  $('#scanGamesBtn').show();
+  $('#manageFoldersBtn').show();
+  $('#pcPowerBtn').show();
+  $('#settingsBtn').show();
   $('#main-content').children().not('#listener, #loadingSpinner, #wasmSpinner').show();
+  $('#plex-hero-banner').css('display', 'flex');
   $('#host-grid').hide();
   $('#settings-list').hide();
   $('.nav-menu-parent').hide();
   $('#updateAppBtn').hide();
-  $('#settingsBtn').hide();
   $('#supportBtn').hide();
   $('#restoreDefaultsBtn').hide();
   $('#connection-warnings').css('display', 'none');
@@ -2502,7 +2536,24 @@ function showApps(host) {
         // Defines the sort order based on the state of the switch
         const sortOrder = sortAppsListSwitch.checked ? 'DESC' : 'ASC';
         // If game grid is populated, sort the app list
-        const sortedAppList = sortTitles(appList, sortOrder);
+        let sortedAppList = sortTitles(appList, sortOrder);
+
+        // Fetch Plex Companion library metadata in parallel to update favorites/recent
+        fetchPlexLibraryMetadata(host);
+
+        const activeFilter = window._currentPlexFilter || 'ALL';
+        const favMap = getPlexFavoritesMap(host);
+        const recentMap = getPlexRecentsMap(host);
+
+        if (activeFilter === 'FAV') {
+          sortedAppList = sortedAppList.filter(app => !!(favMap[app.title] || favMap[String(app.id)]));
+        } else if (activeFilter === 'RECENT') {
+          sortedAppList = sortedAppList.filter(app => !!(recentMap[app.title] || recentMap[String(app.id)])).sort((a, b) => {
+            const ta = recentMap[a.title] || recentMap[String(a.id)] || 0;
+            const tb = recentMap[b.title] || recentMap[String(b.id)] || 0;
+            return tb - ta;
+          });
+        }
 
         if (_isSmartHubSupported) {
           var oldApps = (_previewApps[host.serverUid] && _previewApps[host.serverUid].apps) || [];
@@ -2552,8 +2603,17 @@ function showApps(host) {
               class: 'game-container mdl-card mdl-shadow--4dp',
               role: 'link',
               tabindex: 0,
-              'aria-label': app.title
+              'aria-label': app.title,
+              'data-app-id': app.id,
+              'data-app-title': app.title
             });
+
+            if (favMap[app.title] || favMap[String(app.id)]) {
+              gameContainer.append($('<span>', {
+                class: 'game-fav-badge',
+                text: '★'
+              }));
+            }
 
             // Create the game cell to serve as a holder for the game box
             var gameCell = $('<div>', {
@@ -2689,9 +2749,23 @@ function showApps(host) {
 
         // Navigate to the Apps view
         showAppsMode();
+        if (window.Views && Views.Apps && Views.Apps.view) {
+          var currentChildren = Views.Apps.view.func();
+          var selEl = currentChildren[Views.Apps.view.index] || currentChildren[0];
+          if (selEl && typeof updatePlexHeroForElement === 'function') {
+            updatePlexHeroForElement(selEl);
+          }
+        }
         resolve();
 
         Promise.all(settledPromises).then(function() {
+          if (window.Views && Views.Apps && Views.Apps.view) {
+            var currentChildren = Views.Apps.view.func();
+            var selEl = currentChildren[Views.Apps.view.index] || currentChildren[0];
+            if (selEl && typeof updatePlexHeroForElement === 'function') {
+              updatePlexHeroForElement(selEl);
+            }
+          }
           // Resume background polling now that all box art downloads are complete
           beginBackgroundPollingOfHost(host);
 
@@ -2838,6 +2912,9 @@ function startGame(host, appID) {
   // Refresh the server info, because the user might have quit the game
   host.refreshServerInfo().then(function(ret) {
     host.getAppById(appID).then(function(appToStart) {
+      if (appToStart && typeof recordPlexGamePlay === 'function') {
+        recordPlexGamePlay(host, appToStart.title, appID);
+      }
       if (host.currentGame != 0 && host.currentGame != appID) {
         host.getAppById(host.currentGame).then(function(currentApp) {
           // Find the existing overlay and dialog elements
@@ -4385,6 +4462,9 @@ function loadHTTPCertsCb() {
         // We wait for all known hosts to finish their initial ping before launching the subnet scanner
         // to guarantee that the 254 scanner requests don't choke the network stack and cause known hosts to timeout.
         startPollingHosts().then(() => {
+          if (typeof autoConnectPlexHost === 'function') {
+            autoConnectPlexHost();
+          }
           if (typeof startSubnetScanner === 'function') {
             snackbarLog('Scanning the local network to discover new hosts...');
             // Stop background polling while sweeping the subnet to prevent network exhaustion
@@ -4392,6 +4472,9 @@ function loadHTTPCertsCb() {
             startSubnetScanner().then(() => {
               isSubnetScanFinished = true;
               startPollingHosts();
+              if (typeof autoConnectPlexHost === 'function') {
+                autoConnectPlexHost();
+              }
             }).catch(() => {
               isSubnetScanFinished = true;
               startPollingHosts();
@@ -4461,7 +4544,24 @@ function waitForHostAndNavigateToApp(serverUid, appId) {
         // Defines the sort order based on the state of the switch
         const sortOrder = sortAppsListSwitch.checked ? 'DESC' : 'ASC';
         // If game grid is populated, sort the app list
-        const sortedAppList = sortTitles(appList, sortOrder);
+        let sortedAppList = sortTitles(appList, sortOrder);
+
+        // Fetch Plex Companion library metadata in parallel to update favorites/recent
+        fetchPlexLibraryMetadata(host);
+
+        const activeFilter = window._currentPlexFilter || 'ALL';
+        const favMap = getPlexFavoritesMap(host);
+        const recentMap = getPlexRecentsMap(host);
+
+        if (activeFilter === 'FAV') {
+          sortedAppList = sortedAppList.filter(app => !!(favMap[app.title] || favMap[String(app.id)]));
+        } else if (activeFilter === 'RECENT') {
+          sortedAppList = sortedAppList.filter(app => !!(recentMap[app.title] || recentMap[String(app.id)])).sort((a, b) => {
+            const ta = recentMap[a.title] || recentMap[String(a.id)] || 0;
+            const tb = recentMap[b.title] || recentMap[String(b.id)] || 0;
+            return tb - ta;
+          });
+        }
 
         if (_isSmartHubSupported) {
           // Preserve existing image paths from the previous preview cache
@@ -4803,3 +4903,468 @@ window.addEventListener('gamepaddisconnected', function(e) {
   snackbarLog('Gamepad %1$s has been disconnected.', gamepadIndex);
   console.warn('%c[index.js, gamepaddisconnected]', 'color: green;', 'Warning: Lost connection to gamepad ' + gamepadIndex + '. Please reconnect your gamepad!');
 });
+
+// ============================================================================
+// MOON-SUN PLEX MODE & COMPANION SERVER INTEGRATION
+// ============================================================================
+
+window._currentPlexFilter = 'ALL';
+window._plexLibraryCache = {};
+window._plexAutoConnectedOnce = false;
+window._currentFolderBrowserPath = '';
+var DEFAULT_PLEX_PC_IP = '192.168.1.8';
+var COMPANION_PORT = 47995;
+
+function getCompanionBaseUrl(hostObj) {
+  var targetHost = hostObj || api;
+  var ip = (targetHost && targetHost.address) ? targetHost.address : DEFAULT_PLEX_PC_IP;
+  return 'http://' + ip + ':' + COMPANION_PORT;
+}
+
+function getPlexFavoritesMap(hostObj) {
+  var uid = (hostObj && hostObj.serverUid) ? hostObj.serverUid : 'default';
+  try {
+    return JSON.parse(localStorage.getItem('plexFavs_' + uid) || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function savePlexFavoritesMap(hostObj, map) {
+  var uid = (hostObj && hostObj.serverUid) ? hostObj.serverUid : 'default';
+  localStorage.setItem('plexFavs_' + uid, JSON.stringify(map));
+}
+
+function getPlexRecentsMap(hostObj) {
+  var uid = (hostObj && hostObj.serverUid) ? hostObj.serverUid : 'default';
+  try {
+    return JSON.parse(localStorage.getItem('plexRecents_' + uid) || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function savePlexRecentsMap(hostObj, map) {
+  var uid = (hostObj && hostObj.serverUid) ? hostObj.serverUid : 'default';
+  localStorage.setItem('plexRecents_' + uid, JSON.stringify(map));
+}
+
+function fetchPlexLibraryMetadata(hostObj) {
+  var baseUrl = getCompanionBaseUrl(hostObj);
+  return fetch(baseUrl + '/api/library')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data.ok) {
+        window._plexLibraryCache = data;
+        var favMap = getPlexFavoritesMap(hostObj);
+        var recMap = getPlexRecentsMap(hostObj);
+        if (Array.isArray(data.favorites)) {
+          data.favorites.forEach(function(title) { favMap[title] = true; });
+          savePlexFavoritesMap(hostObj, favMap);
+        }
+        if (data.recentPlays && typeof data.recentPlays === 'object') {
+          Object.keys(data.recentPlays).forEach(function(title) {
+            if (!recMap[title] || data.recentPlays[title] > recMap[title]) {
+              recMap[title] = data.recentPlays[title];
+            }
+          });
+          savePlexRecentsMap(hostObj, recMap);
+        }
+      }
+      return data;
+    })
+    .catch(function(err) {
+      console.warn('[Plex Companion] Could not fetch library metadata:', err);
+      return null;
+    });
+}
+
+function recordPlexGamePlay(hostObj, appTitle, appId) {
+  var recMap = getPlexRecentsMap(hostObj);
+  var now = Date.now();
+  if (appTitle) recMap[appTitle] = now;
+  if (appId) recMap[String(appId)] = now;
+  savePlexRecentsMap(hostObj, recMap);
+
+  var baseUrl = getCompanionBaseUrl(hostObj);
+  fetch(baseUrl + '/api/library/played', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: appTitle })
+  }).catch(function() {});
+}
+
+function triggerCompanionAutoPair(hostObj, randomNumber) {
+  var baseUrl = getCompanionBaseUrl(hostObj);
+  console.log('[Plex Companion] Sending auto-pair PIN to ' + baseUrl + '/api/auto-pair');
+  fetch(baseUrl + '/api/auto-pair', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: String(randomNumber), name: 'Samsung Smart TV (Plex Mode)' })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      console.log('[Plex Companion] Auto-pair response:', res);
+    })
+    .catch(function(err) {
+      console.warn('[Plex Companion] Auto-pair error:', err);
+    });
+}
+
+function setPlexFilter(mode) {
+  window._currentPlexFilter = mode || 'ALL';
+  $('#plexFilterBar .plex-nav-btn').removeClass('active');
+  if (window._currentPlexFilter === 'ALL') $('#filterAllBtn').addClass('active');
+  if (window._currentPlexFilter === 'RECENT') $('#filterRecentBtn').addClass('active');
+  if (window._currentPlexFilter === 'FAV') $('#filterFavBtn').addClass('active');
+  if (api && api.paired) {
+    showApps(api);
+  }
+}
+
+function updatePlexHeroForElement(el) {
+  if (!el) return;
+  var $el = $(el);
+  if (!$el.hasClass('game-container')) return;
+
+  var appId = $el.attr('data-app-id');
+  var appTitle = $el.attr('data-app-title') || $el.attr('aria-label') || 'Jogo';
+  var imgEl = $el.find('img')[0];
+  var imgSrc = (imgEl && imgEl.src) ? imgEl.src : 'static/res/placeholder_error.svg';
+
+  var richApp = null;
+  if (window._plexLibraryCache && Array.isArray(window._plexLibraryCache.apps)) {
+    richApp = window._plexLibraryCache.apps.find(function(a) { return a.name === appTitle; }) || null;
+  }
+
+  var bgSrc = (richApp && richApp.heroUrl) ? richApp.heroUrl : imgSrc;
+
+  $('#plex-hero-title').text(appTitle);
+  $('#plex-hero-cover').attr('src', imgSrc);
+  $('#plex-hero-bg').css('background-image', 'url("' + bgSrc + '")');
+
+  var favMap = getPlexFavoritesMap(api);
+  var recMap = getPlexRecentsMap(api);
+  var isFav = !!(favMap[appTitle] || favMap[String(appId)]);
+  var lastPlayed = recMap[appTitle] || recMap[String(appId)];
+  var isRunning = (api && String(api.currentGame) === String(appId));
+  var customDesc = (richApp && richApp.description) ? richApp.description : '';
+  var genreLabel = (richApp && richApp.genre) ? (' • ' + richApp.genre.toUpperCase()) : '';
+
+  if (isRunning) {
+    $('#plex-hero-badge').text('EM EXECUÇÃO NO PC' + genreLabel).css('background', 'rgba(46, 204, 113, 0.28)').css('color', '#2ecc71');
+    $('#plex-hero-desc').text('Este jogo já está aberto no seu PC. Pressione OK para retomar a transmissão imediatamente.');
+  } else if (isFav) {
+    $('#plex-hero-badge').text('★ FAVORITO • PRONTO PARA JOGAR' + genreLabel).css('background', 'rgba(229, 160, 13, 0.22)').css('color', '#e5a00d');
+    $('#plex-hero-desc').text(customDesc || ('Pressione OK no controle para iniciar em tela cheia no PC (' + (api && api.hostname ? api.hostname : 'PC') + ').'));
+  } else {
+    $('#plex-hero-badge').text('PRONTO PARA JOGAR' + genreLabel).css('background', 'rgba(229, 160, 13, 0.18)').css('color', '#e5a00d');
+    $('#plex-hero-desc').text(customDesc || 'Pressione OK para jogar instantaneamente na TV ou segure OK / Botão Verde para favoritar.');
+  }
+
+  var metaParts = [];
+  metaParts.push('<span>Host: <strong>' + escapeHTML((api && api.hostname) ? api.hostname : 'PC') + '</strong></span>');
+  if (lastPlayed) {
+    var d = new Date(lastPlayed);
+    metaParts.push('<span>Última sessão: ' + d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</span>');
+  } else {
+    metaParts.push('<span>Nunca jogado na TV</span>');
+  }
+  metaParts.push('<span>Segure OK / Botão Verde: ' + (isFav ? '★ Remover Favorito' : '☆ Favoritar') + '</span>');
+  $('#plex-hero-meta').html(metaParts.join(''));
+}
+
+function toggleFavoriteForElement(el) {
+  if (!el) return;
+  var $el = $(el);
+  if (!$el.hasClass('game-container')) return;
+  var appId = $el.attr('data-app-id');
+  var appTitle = $el.attr('data-app-title') || $el.attr('aria-label');
+  if (!appTitle) return;
+
+  var favMap = getPlexFavoritesMap(api);
+  var newState = !favMap[appTitle];
+  if (newState) {
+    favMap[appTitle] = true;
+    if (appId) favMap[String(appId)] = true;
+    if ($el.find('.game-fav-badge').length === 0) {
+      $el.append($('<span>', { class: 'game-fav-badge', text: '★' }));
+    }
+    snackbarLog('★ Adicionado aos Favoritos: ' + appTitle);
+  } else {
+    delete favMap[appTitle];
+    if (appId) delete favMap[String(appId)];
+    $el.find('.game-fav-badge').remove();
+    snackbarLog('Removido dos Favoritos: ' + appTitle);
+  }
+  savePlexFavoritesMap(api, favMap);
+  updatePlexHeroForElement(el);
+
+  var baseUrl = getCompanionBaseUrl(api);
+  fetch(baseUrl + '/api/library/favorite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: appTitle })
+  }).catch(function() {});
+
+  if (window._currentPlexFilter === 'FAV' && !newState && api) {
+    showApps(api);
+  }
+}
+
+function triggerRemoteGameScan() {
+  var baseUrl = getCompanionBaseUrl(api);
+  snackbarLog('Escaneando pastas de jogos no PC e baixando capas...');
+  fetch(baseUrl + '/api/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data.ok) {
+        snackbarLogLong('Escaneamento concluído! ' + (data.totalDiscovered || 0) + ' jogos verificados (' + (data.addedCount || 0) + ' novos). Atualizando catálogo...');
+        setTimeout(function() {
+          if (api && api.paired) {
+            api._memCachedApplist = null;
+            showApps(api);
+          }
+        }, 2500);
+      } else {
+        snackbarLogLong('Erro ao escanear jogos no PC.');
+      }
+    })
+    .catch(function(err) {
+      console.error('[Plex Companion] Scan failed:', err);
+      snackbarLogLong('Não foi possível conectar ao serviço Companion no PC (porta 47995).');
+    });
+}
+
+function openFolderBrowserDialog() {
+  var overlay = document.getElementById('folderBrowserDialogOverlay');
+  var dialog = document.getElementById('folderBrowserDialog');
+  if (!overlay || !dialog) return;
+
+  overlay.style.display = 'flex';
+  dialog.style.display = 'flex';
+
+  $('#addCurrentFolderBtn').off('click').on('click', function() {
+    var pathToAdd = window._currentFolderBrowserPath;
+    if (!pathToAdd) {
+      snackbarLog('Selecione uma pasta primeiro.');
+      return;
+    }
+    var baseUrl = getCompanionBaseUrl(api);
+    snackbarLog('Adicionando pasta e mapeando jogos: ' + pathToAdd);
+    fetch(baseUrl + '/api/config/dirs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', dir: pathToAdd })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function() {
+        loadFolderBrowserPath(window._currentFolderBrowserPath);
+        triggerRemoteGameScan();
+      });
+  });
+
+  $('#folderBrowserCloseBtn').off('click').on('click', function() {
+    overlay.style.display = 'none';
+    dialog.style.display = 'none';
+    Navigation.pop();
+  });
+
+  Navigation.push(Views.FolderBrowserDialog);
+  loadFolderBrowserPath('');
+}
+
+function renderWatchedDirsChips(watchedDirs) {
+  var $container = $('#watchedDirsList');
+  $container.empty();
+  if (!Array.isArray(watchedDirs) || watchedDirs.length === 0) {
+    $container.append($('<span>', { text: 'Nenhuma pasta configurada.', style: 'color:#aaa;font-size:14px;' }));
+    return;
+  }
+  watchedDirs.forEach(function(dirPath) {
+    var $chip = $('<div>', {
+      class: 'watched-dir-chip',
+      tabindex: 0,
+      role: 'button',
+      html: '<span>📁 ' + escapeHTML(dirPath) + '</span><span class="remove-x">✕ Remover</span>'
+    });
+    $chip.on('click', function() {
+      var baseUrl = getCompanionBaseUrl(api);
+      fetch(baseUrl + '/api/config/dirs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove', dir: dirPath })
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+          snackbarLog('Pasta removida: ' + dirPath);
+          renderWatchedDirsChips(res.watchedDirs || []);
+        });
+    });
+    $container.append($chip);
+  });
+}
+
+function loadFolderBrowserPath(targetPath) {
+  var baseUrl = getCompanionBaseUrl(api);
+  var url = baseUrl + '/api/fs/browse' + (targetPath ? ('?path=' + encodeURIComponent(targetPath)) : '');
+
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data || !data.ok) return;
+      window._currentFolderBrowserPath = data.currentPath || '';
+      $('#currentBrowsePath').text(data.currentPath ? data.currentPath : 'Selecione um Disco do PC (C:\\, D:\\, etc.)');
+      renderWatchedDirsChips(data.watchedDirs || []);
+
+      var $list = $('#folderBrowserList');
+      $list.empty();
+
+      if (data.parentPath !== undefined && data.currentPath) {
+        var $upItem = $('<div>', {
+          class: 'folder-browser-item',
+          tabindex: 0,
+          role: 'button',
+          html: '<span class="material-icons">arrow_upward</span><span>.. (Voltar para pasta acima)</span>'
+        });
+        $upItem.on('click', function() {
+          loadFolderBrowserPath(data.parentPath || '');
+        });
+        $list.append($upItem);
+      }
+
+      (data.entries || []).forEach(function(entry) {
+        var icon = entry.isDrive ? 'storage' : 'folder';
+        var $item = $('<div>', {
+          class: 'folder-browser-item',
+          tabindex: 0,
+          role: 'button',
+          html: '<span class="material-icons">' + icon + '</span><span>' + escapeHTML(entry.name) + '</span>'
+        });
+        $item.on('click', function() {
+          loadFolderBrowserPath(entry.path);
+        });
+        $list.append($item);
+      });
+
+      Navigation.change(Views.FolderBrowserDialog);
+    })
+    .catch(function(err) {
+      console.error('[Plex Companion] Failed to browse PC folders:', err);
+      snackbarLogLong('Erro ao navegar nas pastas do PC.');
+    });
+}
+
+function executePcAction(actionName, label) {
+  var baseUrl = getCompanionBaseUrl(api);
+  snackbarLog(label + '...');
+  fetch(baseUrl + '/api/pc/' + actionName, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res && res.ok) {
+        snackbarLogLong(res.message || (label + ' executado com sucesso!'));
+      }
+    })
+    .catch(function() {
+      snackbarLogLong('Comando enviado ao PC.');
+    });
+}
+
+function openPcPowerDialog() {
+  var overlay = document.getElementById('pcPowerDialogOverlay');
+  var dialog = document.getElementById('pcPowerDialog');
+  if (!overlay || !dialog) return;
+
+  overlay.style.display = 'flex';
+  dialog.style.display = 'flex';
+
+  function closePowerModal() {
+    overlay.style.display = 'none';
+    dialog.style.display = 'none';
+    Navigation.pop();
+  }
+
+  $('#pcForceCloseGameBtn').off('click').on('click', function() {
+    closePowerModal();
+    executePcAction('close-app', 'Fechando jogo atual no PC');
+  });
+
+  $('#pcRestartSunshineBtn').off('click').on('click', function() {
+    closePowerModal();
+    executePcAction('restart-sunshine', 'Reiniciando Sunshine no PC');
+  });
+
+  $('#pcSleepBtn').off('click').on('click', function() {
+    closePowerModal();
+    executePcAction('sleep', 'Suspendendo o PC');
+  });
+
+  $('#pcRestartBtn').off('click').on('click', function() {
+    closePowerModal();
+    executePcAction('restart', 'Reiniciando o PC');
+  });
+
+  $('#pcShutdownBtn').off('click').on('click', function() {
+    closePowerModal();
+    executePcAction('shutdown', 'Desligando o PC');
+  });
+
+  $('#pcPowerCancelBtn').off('click').on('click', function() {
+    closePowerModal();
+  });
+
+  Navigation.push(Views.PcPowerDialog);
+}
+
+function autoConnectPlexHost() {
+  if (window._manualHostsView || window._plexAutoConnectedOnce || isInGame) {
+    return;
+  }
+
+  // Look for an online host in saved `hosts`
+  var candidateHost = null;
+  for (var uid in hosts) {
+    if (hosts[uid] && hosts[uid].online) {
+      candidateHost = hosts[uid];
+      break;
+    }
+  }
+
+  if (candidateHost) {
+    window._plexAutoConnectedOnce = true;
+    console.log('[Plex Mode] Auto-connecting to online PC host:', candidateHost.hostname, candidateHost.address);
+    hostChosen(candidateHost);
+    return;
+  }
+
+  // If no saved host is online yet, check if our Companion Server on DEFAULT_PLEX_PC_IP is reachable
+  fetch('http://' + DEFAULT_PLEX_PC_IP + ':' + COMPANION_PORT + '/api/status')
+    .then(function(r) { return r.json(); })
+    .then(function(status) {
+      if (status && status.ok && !window._plexAutoConnectedOnce && !window._manualHostsView) {
+        var targetIp = status.ip || DEFAULT_PLEX_PC_IP;
+        console.log('[Plex Mode] Discovered PC Companion at ' + targetIp + ', auto-adding host...');
+        var _nvhttpHost = new NvHTTP(targetIp, myUniqueid, targetIp);
+        _nvhttpHost.refreshServerInfoAtAddress(targetIp).then(function() {
+          addHostToGrid(_nvhttpHost);
+          saveHosts();
+          if (!window._plexAutoConnectedOnce && !window._manualHostsView) {
+            window._plexAutoConnectedOnce = true;
+            hostChosen(_nvhttpHost);
+          }
+        }).catch(function(e) {
+          console.warn('[Plex Mode] Could not auto-add host via NvHTTP:', e);
+        });
+      }
+    })
+    .catch(function() {});
+}
+

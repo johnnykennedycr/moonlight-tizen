@@ -42,8 +42,14 @@ function remoteControllerHandler(e) {
       tizen.tvaudiocontrol.setMute();
       break;
     case tvKey.KEY_CHANNEL_UP:
-      // Triggers the press action
+    case tvKey.KEY_GREEN:
+      // Triggers the press action (Host menu or Toggle Favorite in Plex Catalog)
       Navigation.press();
+      break;
+    case tvKey.KEY_BLUE:
+      if (!isInGame && typeof openFolderBrowserDialog === 'function') {
+        openFolderBrowserDialog();
+      }
       break;
     case tvKey.KEY_CHANNEL_DOWN:
       // Triggers the switch action

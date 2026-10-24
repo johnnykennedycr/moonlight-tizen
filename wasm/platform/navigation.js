@@ -1666,6 +1666,7 @@ const Views = {
       // If there are more rows behind, then go to the previous row
       if (this.view.prevCardRow(6)) {
         focusElement(this.view.current());
+        if (typeof updatePlexHeroForElement === 'function') updatePlexHeroForElement(this.view.current());
       } else {
         // If there are no more rows, navigate to the AppsNav view
         Navigation.change(Views.AppsNav);
@@ -1677,28 +1678,38 @@ const Views = {
       // If there are more rows after, then go to the next row
       if (this.view.nextCardRow(6)) {
         focusElement(this.view.current());
+        if (typeof updatePlexHeroForElement === 'function') updatePlexHeroForElement(this.view.current());
       }
     },
     left: function() {
       this.view.prevCard(6);
       focusElement(this.view.current());
+      if (typeof updatePlexHeroForElement === 'function') updatePlexHeroForElement(this.view.current());
     },
     right: function() {
       this.view.nextCard(6);
       focusElement(this.view.current());
+      if (typeof updatePlexHeroForElement === 'function') updatePlexHeroForElement(this.view.current());
     },
     accept: function() {
       clickElement(this.view.current());
     },
     back: function() {
-      resolveElement('goBackBtn').click();
+      // In Plex Mode, pressing Back on the main game library asks to exit Moonlight (or go to Hosts via header)
+      exitAppDialog();
     },
-    press: function() {},
+    press: function() {
+      if (typeof toggleFavoriteForElement === 'function') {
+        toggleFavoriteForElement(this.view.current());
+      }
+    },
     switch: function() {
       this.view.currentCardRow(6);
+      if (typeof updatePlexHeroForElement === 'function') updatePlexHeroForElement(this.view.current());
     },
     enter: function() {
       mark(this.view.current());
+      if (typeof updatePlexHeroForElement === 'function') updatePlexHeroForElement(this.view.current());
     },
     leave: function() {
       unmark(this.view.current());
@@ -1707,6 +1718,13 @@ const Views = {
   AppsNav: {
     view: new ListView(() => [
       'goBackBtn',
+      'filterAllBtn',
+      'filterRecentBtn',
+      'filterFavBtn',
+      'scanGamesBtn',
+      'manageFoldersBtn',
+      'pcPowerBtn',
+      'settingsBtn',
       'quitRunningAppBtn'
     ]),
     up: function() {},
@@ -1728,7 +1746,8 @@ const Views = {
       clickElement(this.view.current());
     },
     back: function() {
-      resolveElement('goBackBtn').click();
+      Navigation.change(Views.Apps);
+      focusElement(Views.Apps.view.current());
     },
     press: function() {},
     switch: function() {
@@ -1889,6 +1908,96 @@ const Views = {
     leave: function() {
       unmark(this.view.current());
       setTimeout(() => blurElement(this.view.current()), 100);
+    },
+  },
+  FolderBrowserDialog: {
+    view: new ListView(() => {
+      const items = Array.from(document.querySelectorAll('#folderBrowserList .plex-folder-item'));
+      return items.concat([
+        document.getElementById('folderUpBtn'),
+        document.getElementById('toggleWatchFolderBtn'),
+        document.getElementById('scanNowFolderBtn'),
+        document.getElementById('closeFolderBrowserBtn')
+      ].filter(Boolean));
+    }),
+    up: function() {
+      this.view.prevOption();
+      const cur = resolveElement(this.view.current());
+      focusElement(cur);
+      if (cur && cur.scrollIntoView) cur.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    },
+    down: function() {
+      this.view.nextOption();
+      const cur = resolveElement(this.view.current());
+      focusElement(cur);
+      if (cur && cur.scrollIntoView) cur.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    },
+    left: function() {
+      this.view.prevOption();
+      focusElement(this.view.current());
+    },
+    right: function() {
+      this.view.nextOption();
+      focusElement(this.view.current());
+    },
+    accept: function() {
+      clickElement(this.view.current());
+    },
+    back: function() {
+      resolveElement('closeFolderBrowserBtn').click();
+    },
+    press: function() {},
+    switch: function() {
+      focusElement(this.view.current());
+    },
+    enter: function() {
+      this.view.index = 0;
+      mark(this.view.current());
+      setTimeout(() => focusElement(this.view.current()), 80);
+    },
+    leave: function() {
+      unmark(this.view.current());
+      setTimeout(() => blurElement(this.view.current()), 80);
+    },
+  },
+  PcPowerDialog: {
+    view: new ListView(() => [
+      'powerForceQuitBtn',
+      'powerRescanGamesBtn',
+      'powerRestartSunshineBtn',
+      'powerSleepPcBtn',
+      'powerRestartPcBtn',
+      'powerShutdownPcBtn',
+      'closePcPowerBtn'
+    ]),
+    up: function() {
+      this.view.prevOption();
+      focusElement(this.view.current());
+    },
+    down: function() {
+      this.view.nextOption();
+      focusElement(this.view.current());
+    },
+    left: function() {},
+    right: function() {},
+    accept: function() {
+      clickElement(this.view.current());
+    },
+    back: function() {
+      resolveElement('closePcPowerBtn').click();
+    },
+    press: function() {},
+    switch: function() {
+      focusElement(this.view.current());
+    },
+    enter: function() {
+      this.view.index = 0;
+      mark(this.view.current());
+      setTimeout(() => focusElement(this.view.current()), 80);
+    },
+    leave: function() {
+      unmark(this.view.current());
+      setTimeout(() => blurElement(this.view.current()), 80);
     },
   },
 };
