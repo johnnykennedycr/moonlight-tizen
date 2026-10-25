@@ -4408,6 +4408,56 @@ function loadHTTPCertsCb() {
         storeData('uniqueid', myUniqueid, null);
       }
 
+      function onHttpInitialized() {
+        restoreUiAfterWasmLoad();
+        // load previously connected hosts, which have been killed into an object, and revive them back into a class
+        getData('hosts', function(previousValue) {
+          hosts = previousValue.hosts != null ? previousValue.hosts : {};
+          for (var hostUID in hosts) { // Programmatically add each new host
+            var revivedHost = new NvHTTP(hosts[hostUID].address, myUniqueid, hosts[hostUID].userEnteredAddress, hosts[hostUID].macAddress);
+            Object.assign(revivedHost, hosts[hostUID]);
+            revivedHost._memCachedApplist = null; // Prevent using the app list cache from a previous session
+            revivedHost.httpPort = hosts[hostUID].httpPort || ((hosts[hostUID].httpsPort || 47984) + 5);
+            revivedHost.httpsPort = hosts[hostUID].httpsPort || (revivedHost.httpPort - 5);
+            revivedHost.externalPort = hosts[hostUID].externalPort || revivedHost.httpPort;
+            revivedHost.serverUid = hosts[hostUID].serverUid;
+            revivedHost.externalIP = hosts[hostUID].externalIP;
+            revivedHost.hostname = hosts[hostUID].hostname;
+            revivedHost.ppkstr = hosts[hostUID].ppkstr;
+            revivedHost.autoWolEnabled = hosts[hostUID].autoWolEnabled || false;
+            hosts[hostUID] = revivedHost;
+            addHostToGrid(revivedHost);
+          }
+          isHostsLoaded = true;
+          getData('previewApps', function(storedPreview) {
+            _previewApps = (storedPreview.previewApps != null) ? storedPreview.previewApps : {};
+            updatePreviewData();
+          });
+          console.log('%c[index.js, loadHTTPCertsCb]', 'color: green;', 'Loading previously connected hosts...');
+
+          startPollingHosts().then(() => {
+            if (typeof autoConnectPlexHost === 'function') {
+              autoConnectPlexHost().then(function(connected) {
+                if (!connected && typeof startSubnetScanner === 'function') {
+                  snackbarLog('Scanning the local network to discover new hosts...');
+                  stopPollingHosts();
+                  startSubnetScanner().then(() => {
+                    isSubnetScanFinished = true;
+                    startPollingHosts();
+                    autoConnectPlexHost();
+                  }).catch(() => {
+                    isSubnetScanFinished = true;
+                    startPollingHosts();
+                  });
+                } else {
+                  isSubnetScanFinished = true;
+                }
+              });
+            }
+          });
+        });
+      }
+
       if (!pairingCert) { // We couldn't load a cert. Let's attempt to generate a new one.
         console.warn('%c[index.js, loadHTTPCertsCb]', 'color: green;', 'Warning: Local certificate not found! Generating a new one...');
         sendMessage('makeCert', []).then(function(cert) {
@@ -4418,72 +4468,18 @@ function loadHTTPCertsCb() {
           console.error('%c[index.js, loadHTTPCertsCb]', 'color: green;', 'Error: Failed to generate a new certificate! Returned error was: \n', failedCert + '!');
         }).then(function(ret) {
           sendMessage('httpInit', [pairingCert.cert, pairingCert.privateKey, myUniqueid]).then(function(ret) {
-            restoreUiAfterWasmLoad();
+            onHttpInitialized();
           }, function(failedInit) {
             console.error('%c[index.js, loadHTTPCertsCb]', 'color: green;', 'Error: Failed HTTP initialization! Returned error was: ', failedInit + '!');
           });
         });
       } else {
         sendMessage('httpInit', [pairingCert.cert, pairingCert.privateKey, myUniqueid]).then(function(ret) {
-          restoreUiAfterWasmLoad();
+          onHttpInitialized();
         }, function(failedInit) {
           console.error('%c[index.js, loadHTTPCertsCb]', 'color: green;', 'Error: Failed HTTP initialization! Returned error was: ', failedInit + '!');
         });
       }
-
-      // load previously connected hosts, which have been killed into an object, and revive them back into a class
-      getData('hosts', function(previousValue) {
-        hosts = previousValue.hosts != null ? previousValue.hosts : {};
-        for (var hostUID in hosts) { // Programmatically add each new host
-          var revivedHost = new NvHTTP(hosts[hostUID].address, myUniqueid, hosts[hostUID].userEnteredAddress, hosts[hostUID].macAddress);
-          Object.assign(revivedHost, hosts[hostUID]);
-          revivedHost._memCachedApplist = null; // Prevent using the app list cache from a previous session
-          revivedHost.httpPort = hosts[hostUID].httpPort || ((hosts[hostUID].httpsPort || 47984) + 5);
-          revivedHost.httpsPort = hosts[hostUID].httpsPort || (revivedHost.httpPort - 5);
-          revivedHost.externalPort = hosts[hostUID].externalPort || revivedHost.httpPort;
-          revivedHost.serverUid = hosts[hostUID].serverUid;
-          revivedHost.externalIP = hosts[hostUID].externalIP;
-          revivedHost.hostname = hosts[hostUID].hostname;
-          revivedHost.ppkstr = hosts[hostUID].ppkstr;
-          revivedHost.autoWolEnabled = hosts[hostUID].autoWolEnabled || false;
-          hosts[hostUID] = revivedHost;
-          addHostToGrid(revivedHost);
-        }
-        isHostsLoaded = true;
-        // Load stored preview app lists and update Smart Hub Preview tiles.
-        // Using the persisted list avoids requiring live host connections at startup.
-        getData('previewApps', function(storedPreview) {
-          _previewApps = (storedPreview.previewApps != null) ? storedPreview.previewApps : {};
-          updatePreviewData();
-        });
-        console.log('%c[index.js, loadHTTPCertsCb]', 'color: green;', 'Loading previously connected hosts...');
-        
-        // Immediately start polling known hosts so they are ready for Smart Hub or instant clicks.
-        // We wait for all known hosts to finish their initial ping before launching the subnet scanner
-        // to guarantee that the 254 scanner requests don't choke the network stack and cause known hosts to timeout.
-        startPollingHosts().then(() => {
-          if (typeof autoConnectPlexHost === 'function') {
-            autoConnectPlexHost();
-          }
-          if (typeof startSubnetScanner === 'function') {
-            snackbarLog('Scanning the local network to discover new hosts...');
-            // Stop background polling while sweeping the subnet to prevent network exhaustion
-            stopPollingHosts();
-            startSubnetScanner().then(() => {
-              isSubnetScanFinished = true;
-              startPollingHosts();
-              if (typeof autoConnectPlexHost === 'function') {
-                autoConnectPlexHost();
-              }
-            }).catch(() => {
-              isSubnetScanFinished = true;
-              startPollingHosts();
-            });
-          } else {
-            isSubnetScanFinished = true;
-          }
-        });
-      });
     });
   });
 }
@@ -5326,7 +5322,7 @@ function openPcPowerDialog() {
 
 function autoConnectPlexHost() {
   if (window._manualHostsView || window._plexAutoConnectedOnce || isInGame) {
-    return;
+    return Promise.resolve(true);
   }
 
   // Look for an online host in saved `hosts`
@@ -5342,29 +5338,34 @@ function autoConnectPlexHost() {
     window._plexAutoConnectedOnce = true;
     console.log('[Plex Mode] Auto-connecting to online PC host:', candidateHost.hostname, candidateHost.address);
     hostChosen(candidateHost);
-    return;
+    return Promise.resolve(true);
   }
 
   // If no saved host is online yet, check if our Companion Server on DEFAULT_PLEX_PC_IP is reachable
-  fetch('http://' + DEFAULT_PLEX_PC_IP + ':' + COMPANION_PORT + '/api/status')
+  return fetch('http://' + DEFAULT_PLEX_PC_IP + ':' + COMPANION_PORT + '/api/status')
     .then(function(r) { return r.json(); })
     .then(function(status) {
       if (status && status.ok && !window._plexAutoConnectedOnce && !window._manualHostsView) {
         var targetIp = status.ip || DEFAULT_PLEX_PC_IP;
         console.log('[Plex Mode] Discovered PC Companion at ' + targetIp + ', auto-adding host...');
         var _nvhttpHost = new NvHTTP(targetIp, myUniqueid, targetIp);
-        _nvhttpHost.refreshServerInfoAtAddress(targetIp).then(function() {
+        return _nvhttpHost.refreshServerInfoAtAddress(targetIp).then(function() {
           addHostToGrid(_nvhttpHost);
           saveHosts();
           if (!window._plexAutoConnectedOnce && !window._manualHostsView) {
             window._plexAutoConnectedOnce = true;
             hostChosen(_nvhttpHost);
           }
+          return true;
         }).catch(function(e) {
           console.warn('[Plex Mode] Could not auto-add host via NvHTTP:', e);
+          return false;
         });
       }
+      return false;
     })
-    .catch(function() {});
+    .catch(function() {
+      return false;
+    });
 }
 
